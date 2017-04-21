@@ -23,6 +23,7 @@ from keystone import exception
 from keystone import identity
 from keystone.identity.backends import ldap as ldap_backend
 from keystone.identity.backends import sql as sql_ident
+from keystone.identity.backends import base
 
 from oslo_config import cfg
 from oslo_log import log
@@ -49,11 +50,11 @@ class Identity(sql_ident.Identity):
         if not password:
             raise AssertionError('Invalid user / password')
 
-        session = sql.get_session()
-        try:
-            user_ref = self._get_user(session, user_id)
-        except exception.UserNotFound:
-            raise AssertionError('Invalid user / password')
+        with sql.session_for_read() as session:
+            try:
+                user_ref = self._get_user(session, user_id)
+            except exception.UserNotFound:
+                raise AssertionError('Invalid user / password')
 
         try:
             # if the user_ref has a password, it's from the SQL backend and
@@ -85,7 +86,7 @@ class Identity(sql_ident.Identity):
             # LDAP would return
             user_ref = user_ref.to_dict()
 
-        return identity.filter_user(user_ref)
+        return base.filter_user(user_ref)
 
     def is_domain_aware(self):
         # XXX we only need domain_aware to be False when authenticating
@@ -119,14 +120,14 @@ class Identity(sql_ident.Identity):
 
     def get_user(self, user_id):
         LOG.debug("Called get_user %s" % user_id)
-        session = sql.get_session()
-        user = self._get_user(session, user_id)
+        with sql.session_for_read() as session:
+            user = self._get_user(session, user_id)
         try:
             user = user.to_dict()
         except AttributeError:
             # LDAP Users are already dicts which is fine
-            pass
-        return identity.filter_user(user)
+            user = self.ldap.user.filter_attributes(user)
+        return base.filter_user(user)
 
     def get_user_by_name(self, user_name, domain_id):
         LOG.debug("Called get_user_by_name %s, %s" % (user_name, domain_id))
@@ -135,7 +136,8 @@ class Identity(sql_ident.Identity):
             user = super(Identity, self).get_user_by_name(user_name, domain_id)
         except exception.UserNotFound:
             # then try LDAP
-            user = identity.filter_user(self.ldap.user.get_by_name(user_name))
+            user = self.ldap.user.get_by_name(user_name)
+            user = self.ldap.user.filter_attributes(user)
             user['domain_id'] = CONF.identity.default_domain_id
             return user
         else:
@@ -160,8 +162,8 @@ class Identity(sql_ident.Identity):
         return sql_users + ldap_users
 
     def update_user(self, user_id, user):
-        session = sql.get_session()
-        user_ref = self._get_user(session, user_id)
+        with sql.session_for_read() as session:
+            user_ref = self._get_user(session, user_id)
         # LDAP user_ref is a dict. SQL user_ref is a User object
         if isinstance(user_ref, dict):
             return self.ldap.update_user(user_id, user)
