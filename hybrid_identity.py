@@ -49,11 +49,11 @@ class Identity(sql_ident.Identity):
         if not password:
             raise AssertionError('Invalid user / password')
 
-        session = sql.get_session()
-        try:
-            user_ref = self._get_user(session, user_id)
-        except exception.UserNotFound:
-            raise AssertionError('Invalid user / password')
+        with sql.session_for_read() as session:
+            try:
+                user_ref = self._get_user(session, user_id)
+            except exception.UserNotFound:
+                raise AssertionError('Invalid user / password')
 
         try:
             # if the user_ref has a password, it's from the SQL backend and
@@ -119,8 +119,8 @@ class Identity(sql_ident.Identity):
 
     def get_user(self, user_id):
         LOG.debug("Called get_user %s" % user_id)
-        session = sql.get_session()
-        user = self._get_user(session, user_id)
+        with sql.session_for_read() as session:
+            user = self._get_user(session, user_id)
         try:
             user = user.to_dict()
         except AttributeError:
@@ -160,8 +160,8 @@ class Identity(sql_ident.Identity):
         return sql_users + ldap_users
 
     def update_user(self, user_id, user):
-        session = sql.get_session()
-        user_ref = self._get_user(session, user_id)
+        with sql.session_for_read() as session:
+            user_ref = self._get_user(session, user_id)
         # LDAP user_ref is a dict. SQL user_ref is a User object
         if isinstance(user_ref, dict):
             return self.ldap.update_user(user_id, user)
