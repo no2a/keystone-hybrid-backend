@@ -157,6 +157,11 @@ class Identity(sql_ident.Identity):
         if (not domain_filter or
                 domain_filter['value'] == CONF.identity.default_domain_id):
             ldap_users = self.ldap.user.get_all_filtered(hints)
+            LOG.debug('sql_users: %d', len(sql_users))
+            LOG.debug('ldap_users: %d', len(ldap_users))
+            sql_ids = {i['id'] for i in sql_users}
+            ldap_users = [i for i in ldap_users if i['id'] not in sql_ids]
+            LOG.debug('deduped ldap_users: %d', len(ldap_users))
             for user in ldap_users:
                 user['domain_id'] = CONF.identity.default_domain_id
         return sql_users + ldap_users
