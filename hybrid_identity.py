@@ -105,18 +105,14 @@ class Identity(sql_ident.Identity):
         try:
             user_ref = super(Identity, self)._get_user(session, user_id)
         except exception.UserNotFound:
+            user_ref = None
+        if not (user_ref and user_ref.local_user):
             # then try LDAP
             user_ref = self.ldap.user.get(user_id)
             user_ref['domain_id'] = CONF.identity.default_domain_id
-            # Above we assume no password is in the user_ref:
-            # except KeyError:  # if it doesn't have a password, it must be LDAP
-            # But if the LDAP server returns a password, this except
-            # fails so we should remove it if it's there
             if 'password' in user_ref:
                 del user_ref['password']
-            return user_ref
-        else:
-            return user_ref
+        return user_ref
 
     def get_user(self, user_id):
         LOG.debug("Called get_user %s" % user_id)
